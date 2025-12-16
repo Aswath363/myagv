@@ -49,10 +49,12 @@ async def run_agv_client():
         try:
             while True:
                 print("\n[State]: Capturing fresh view...")
-                # Flush buffer to get latest frame
-                for _ in range(5):
+                # Aggressively flush buffer (read 10 frames to clear internal queue)
+                for _ in range(10):
                     cap.grab()
                 
+                # Setup wait for fresh frame
+                time.sleep(0.1) 
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to grab frame")
