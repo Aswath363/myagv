@@ -57,5 +57,37 @@ async def websocket_endpoint(websocket: WebSocket):
         except:
             pass
 
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(memory_consolidation_loop())
+
+async def memory_consolidation_loop():
+    print("Memory consolidation daemon started.")
+    while True:
+        await asyncio.sleep(120)  # Wait 2 minutes
+        try:
+            # 1. Fetch & Update Goals
+            print("Checking for new goals...")
+            goal = await gemini_service.memory.fetch_goal()
+            if goal:
+                gemini_service.update_current_goal(goal)
+
+            # 2. Consolidate Memory
+            print("Consolidating memory from Firebase...")
+            history = await gemini_service.memory.fetch_history()
+            if history:
+                # Summarize with Gemini
+                print("Summarizing recent events...")
+                summary = await gemini_service.summarize_memory(history)
+                
+                gemini_service.update_memory_context(summary)
+                await gemini_service.memory.clear_history()
+                print(f"Memory consolidated: {summary[:50]}...")
+            else:
+                print("No new memories to consolidate.")
+        except Exception as e:
+            print(f"Memory consolidation failed: {e}")
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

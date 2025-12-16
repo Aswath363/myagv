@@ -45,6 +45,13 @@ class MotorController:
             self.agv.stop()
         else:
             print(f"Unknown command: {command}")
+            return
+
+        # usage of duration
+        duration = float(cmd_data.get("duration", 0))
+        if duration > 0 and command != "STOP":
+            time.sleep(duration)
+            self.stop()
 
     def stop(self):
         print("Stopping motors...")

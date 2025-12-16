@@ -6,6 +6,8 @@ import base64
 import time
 import os
 import argparse
+import pyttsx3
+import threading
 from motor_controller import MotorController
 
 # Default settings that can be overridden by env vars or args
@@ -15,7 +17,30 @@ DEFAULT_CAMERA_ID = "0" # 0 for onboard USB camera
 async def run_agv_client(backend_url, camera_id):
     # Initialize Motor Controller
     motor = MotorController()
-    
+
+    # Initialize TTS Engine
+    try:
+        engine = pyttsx3.init()
+        # Set rate usually defaults to 200, maybe slow it down a bit
+        engine.setProperty('rate', 150)
+    except Exception as e:
+        print(f"Warning: TTS initialization failed: {e}")
+        engine = None
+
+    def speak_text(text):
+        if engine and text:
+            print(f"[Speaking]: {text}")
+            try:
+                # pyttsx3 runAndWait is blocking, so we need to be careful.
+                # Since we are in an async loop, blocking is bad.
+                # However, for a simple implementation, running it in a thread is best.
+                def _speak():
+                    engine.say(text)
+                    engine.runAndWait()
+                threading.Thread(target=_speak).start()
+            except Exception as e:
+                print(f"TTS Error: {e}")
+
     # Initialize Camera
     print(f"Opening camera: {camera_id} ...")
     # Convert camera_id to int if it's a digit
@@ -63,6 +88,10 @@ async def run_agv_client(backend_url, camera_id):
                         
                         # Execute command
                         motor.execute_command(command_data)
+
+                        # Speak if available
+                        if "speak" in command_data:
+                            speak_text(command_data["speak"])
                         
                     except websockets.exceptions.ConnectionClosed:
                         print("Connection lost. Reconnecting...")

@@ -2,3 +2,4 @@ websockets
 opencv-python-headless
 numpy
 pymycobot
+pyttsx3

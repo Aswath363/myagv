@@ -48,6 +48,11 @@ async def run_agv_client():
         
         try:
             while True:
+                print("\n[State]: Capturing fresh view...")
+                # Flush buffer to get latest frame
+                for _ in range(5):
+                    cap.grab()
+                
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to grab frame")
@@ -59,6 +64,7 @@ async def run_agv_client():
                 image_bytes = buffer.tobytes()
 
                 # Send frame to backend
+                print("[State]: Sending to Brain (Gemini)...")
                 await websocket.send(image_bytes)
 
                 # Receive command
