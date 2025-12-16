@@ -48,37 +48,24 @@ async def run_agv_client():
         
         try:
             while True:
-                print("\n[State]: Recording video clip...")
-                # Capture 30 frames (~1-2 seconds)
-                frames = []
-                for _ in range(30):
-                    ret, frame = cap.read()
-                    if ret:
-                        frames.append(frame)
-                    # asyncio.sleep isn't blocking the read here, which is fine for capturing
+                print("\n[State]: Capturing fresh view...")
+                # Flush buffer to get latest frame
+                for _ in range(5):
+                    cap.grab()
                 
-                if not frames:
-                    print("No frames captured")
+                ret, frame = cap.read()
+                if not ret:
+                    print("Failed to grab frame")
+                    time.sleep(0.1)
                     continue
 
-                # Write to MP4 file
-                temp_file = "temp_capture.mp4"
-                height, width, _ = frames[0].shape
-                # mp4v is widely supported in opencv headless
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
-                out = cv2.VideoWriter(temp_file, fourcc, 15.0, (width, height))
-                
-                for f in frames:
-                    out.write(f)
-                out.release()
+                # Encode frame to JPEG
+                _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+                image_bytes = buffer.tobytes()
 
-                # Read bytes
-                with open(temp_file, "rb") as f:
-                    video_bytes = f.read()
-
-                # Send video to backend
-                print(f"[State]: Sending {len(video_bytes)/1024:.1f} KB video to Brain...")
-                await websocket.send(video_bytes)
+                # Send frame to backend
+                print(f"[State]: Sending {len(image_bytes)/1024:.1f} KB image to Brain...")
+                await websocket.send(image_bytes)
 
                 # Receive command
                 response = await websocket.recv()

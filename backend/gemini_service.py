@@ -117,8 +117,8 @@ If you see an obstacle or interesting object, comment on it in the "speak" field
                     types.Content(
                         role="user",
                         parts=[
-                            types.Part.from_bytes(data=image_bytes, mime_type="video/mp4"),
-                            types.Part.from_text(text="Analyze this video clip and provide navigation command.")
+                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                            types.Part.from_text(text="Analyze this frame and provide navigation command.")
                         ]
                     )
                 ],
