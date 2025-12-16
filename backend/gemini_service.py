@@ -38,20 +38,22 @@ Consider the robot's dimensions when navigating tight spaces.
 If you see an obstacle or interesting object, comment on it in the "speak" field.
 
 **Supported commands:**
-- "MOVE_FORWARD": speed 0-100
-- "MOVE_BACKWARD": speed 0-100
-- "TURN_LEFT": speed 0-100
-- "TURN_RIGHT": speed 0-100
+- "MOVE_FORWARD": speed 10 (Fixed)
+- "MOVE_BACKWARD": speed 10 (Fixed)
+- "TURN_LEFT": speed 10 (Fixed)
+- "TURN_RIGHT": speed 10 (Fixed)
 - "STOP": speed 0
 
 **Response Format:**
   "command": "MOVE_FORWARD",
-  "speed": 50,
+  "speed": 10,
   "duration": 1.5,
   "reasoning": "Path is clear for about 1 meter.",
   "speak": "Moving forward for 1.5 seconds."
 }
-**Crucial:** Always provide a 'duration' (in seconds) for MOVE/TURN commands.
+**Crucial:** 
+- ALWAYS use speed 10 for safety.
+- Always provide a 'duration' (in seconds) for MOVE/TURN commands.
 - For turns, estimate time needed for the angle (e.g. 1.0s for ~90 degrees).
 - For movement, estimate time based on free space (e.g. 1-3 seconds).
 - Default to 1.0s if unsure.
@@ -115,8 +117,8 @@ If you see an obstacle or interesting object, comment on it in the "speak" field
                     types.Content(
                         role="user",
                         parts=[
-                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                            types.Part.from_text(text="Analyze this frame and provide navigation command.")
+                            types.Part.from_bytes(data=image_bytes, mime_type="video/mp4"),
+                            types.Part.from_text(text="Analyze this video clip and provide navigation command.")
                         ]
                     )
                 ],
