@@ -2,9 +2,9 @@ import asyncio
 import websockets
 import cv2
 import json
-import base64
 import time
 import os
+import threading
 from dotenv import load_dotenv
 from motor_controller import MotorController
 
@@ -27,15 +27,57 @@ except ValueError:
     else:
         CAMERA_ID = _cam_id
 
+
+class BufferlessVideoCapture:
+    """
+    A wrapper around cv2.VideoCapture that continuously reads frames in a
+    background thread, ensuring only the latest frame is ever returned.
+    This solves the stale buffer problem when processing is slow.
+    """
+    def __init__(self, name):
+        self.cap = cv2.VideoCapture(name)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.lock = threading.Lock()
+        self.latest_frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self._reader, daemon=True)
+        self.thread.start()
+
+    def _reader(self):
+        """Continuously reads frames, keeping only the latest one."""
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret:
+                with self.lock:
+                    self.latest_frame = frame
+            # Small sleep to prevent CPU spinning if camera is slow
+            time.sleep(0.01)
+
+    def read(self):
+        """Returns the most recent frame."""
+        with self.lock:
+            return self.latest_frame is not None, self.latest_frame.copy() if self.latest_frame is not None else None
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def release(self):
+        self.running = False
+        self.thread.join(timeout=1.0)
+        self.cap.release()
+
+
 async def run_agv_client():
     # Initialize Motor Controller
     motor = MotorController()
     
-    # Initialize Camera
-    cap = cv2.VideoCapture(CAMERA_ID)
-    # Reduce resolution for lower latency and bandwidth
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # Initialize Camera with Bufferless wrapper
+    print("Initializing Bufferless Camera...")
+    cap = BufferlessVideoCapture(CAMERA_ID)
+    
+    # Give the reader thread a moment to get the first frame
+    time.sleep(0.5)
 
     if not cap.isOpened():
         print("Error: Could not open video device.")
@@ -48,17 +90,12 @@ async def run_agv_client():
         
         try:
             while True:
-                print("\n[State]: Capturing fresh view...")
-                # Aggressively flush buffer (read 10 frames to clear internal queue)
-                for _ in range(10):
-                    cap.grab()
+                print("\n[State]: Getting latest frame...")
                 
-                # Setup wait for fresh frame
-                time.sleep(0.1) 
                 ret, frame = cap.read()
-                if not ret:
+                if not ret or frame is None:
                     print("Failed to grab frame")
-                    time.sleep(0.1)
+                    await asyncio.sleep(0.1)
                     continue
 
                 # Encode frame to JPEG
