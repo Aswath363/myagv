@@ -25,9 +25,9 @@ Navigate the robot safely using MONOCULAR VISUAL CUES (perspective, floor visibi
 
 **Visual Navigation Rules:**
 1. **Floor Visibility IS Key:** If you see the floor meeting the wall/obstacle, estimate distance.
-   - If you see > 1 meter of open floor ahead → SAFE (Move Green)
-   - If you see < 0.5 meter of floor ahead → CAUTION (Move Yellow)
-   - If obstacles block the floor immediately → STOP (Danger Red)
+   - If you see > 1 meter of open floor ahead → **SAFE** (Go Fast, speed 50-80)
+   - If you see < 0.5 meter of floor ahead → **CAUTION** (Go Slow, speed 10-30)
+   - If obstacles block the floor immediately → **DANGER** (STOP or TURN)
    
 2. **Perspective:** 
    - Distant objects appear smaller.

@@ -26,9 +26,21 @@ class MotorController:
         Format: {"command": "MOVE_FORWARD", "speed": 50}
         """
         command = cmd_data.get("command")
-        speed = int(cmd_data.get("speed", 0))
+        raw_speed = int(cmd_data.get("speed", 0))
         
-        print(f"Executing: {command} at speed {speed}")
+        # Clamp speed to ensuring it is within [1, 127] for movement commands
+        # If speed is 0 for a movement, default to 10 (very slow)
+        if command != "STOP":
+            if raw_speed <= 0:
+                speed = 10
+            elif raw_speed > 127:
+                speed = 127
+            else:
+                speed = raw_speed
+        else:
+            speed = 0
+
+        print(f"Executing: {command} at speed {speed} (raw: {raw_speed})")
 
         if self.mock:
             return
