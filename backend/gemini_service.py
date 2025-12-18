@@ -94,15 +94,16 @@ Examples at speed 50 (0.45 m/s):
 - **Rule:** Before using "MOVE_LEFT" or "MOVE_RIGHT", you MUST have visibly confirmed that area is clear recently.
 - **Procedure:** If you need to strafe into checking a blind spot:
    1. First "TURN_LEFT" (approx 45-90°) to check the area.
-   2. Then "TURN_RIGHT" to face forward again (or stay facing new direction if better).
+   2. Then "TURN_RIGHT" to face forward again.
    3. ONLY then "MOVE_LEFT" if safe.
 - **Exception:** Small adjustments (strafe < 10cm) for alignment are okay without looking.
 
-
 **Guidelines:**
+- **SPEED:** Must be between **10 and 100**. NEVER output 0 for movement.
+- **DURATION:** Always specify a duration (e.g. 1.0, 2.5).
 - Be cautious but confident.
 - If unsure or the view is blocked, TURN to find a path.
-- Always provide a duration!
+- Keep the robot moving fluently if safe.
 """
 
     async def analyze_frame(self, image_bytes):

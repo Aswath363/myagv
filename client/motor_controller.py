@@ -23,7 +23,7 @@ class MotorController:
     def execute_command(self, cmd_data):
         """
         Executes a command dictionary.
-        Format: {"command": "MOVE_FORWARD", "speed": 50}
+        Format: {"command": "MOVE_FORWARD", "speed": 50, "duration": 1.0}
         """
         command = cmd_data.get("command")
         raw_speed = int(cmd_data.get("speed", 0))
@@ -50,16 +50,16 @@ class MotorController:
         elif command == "MOVE_BACKWARD":
             self.agv.retreat(speed)
         elif command == "MOVE_LEFT":
-            # Strafe Left
+            # Strafe Left (Sideways)
             self.agv.pan_left(speed)
         elif command == "MOVE_RIGHT":
-            # Strafe Right
+            # Strafe Right (Sideways)
             self.agv.pan_right(speed)
         elif command == "TURN_LEFT":
-            # Rotate in place
+            # Rotate in place (Counter-Clockwise)
             self.agv.counterclockwise_rotation(speed)
         elif command == "TURN_RIGHT":
-            # Rotate in place
+            # Rotate in place (Clockwise)
             self.agv.clockwise_rotation(speed)
         elif command == "STOP":
             self.agv.stop()
@@ -67,7 +67,7 @@ class MotorController:
             print(f"Unknown command: {command}")
             return
 
-        # usage of duration
+        # Execute duration
         duration = float(cmd_data.get("duration", 0))
         if duration > 0 and command != "STOP":
             time.sleep(duration)
