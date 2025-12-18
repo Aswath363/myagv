@@ -7,7 +7,7 @@ except ImportError:
     MOCK_MODE = True
 
 class MotorController:
-    def __init__(self, port="/dev/ttyUSB0", baudrate=115200):
+    def __init__(self, port="/dev/ttyS0", baudrate=115200):
         self.mock = MOCK_MODE
         if not self.mock:
             try:
