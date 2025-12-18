@@ -159,27 +159,35 @@ class BufferlessVideoCapture:
 async def run_agv_client():
     motor = MotorController()
     
-    # Initialize RGB Camera
+    # Initialize RGB Camera first
     print(f"Initializing RGB Camera: {CAMERA_ID}")
     rgb_cap = BufferlessVideoCapture(CAMERA_ID)
-    time.sleep(0.5)
+    time.sleep(1.0)  # Longer delay for stability
     
     if not rgb_cap.isOpened():
         print("Error: Could not open RGB camera.")
         return
     
-    # Initialize Depth Camera (optional)
+    print("RGB camera ready!")
+    
+    # Initialize Depth Camera (optional) - with extra safety
     depth_cap = None
     if DEPTH_CAMERA_ID is not None:
         print(f"Initializing Depth Camera: {DEPTH_CAMERA_ID}")
-        depth_cap = BufferlessVideoCapture(DEPTH_CAMERA_ID)
-        time.sleep(0.5)
+        time.sleep(1.0)  # Wait before opening second camera
         
-        if not depth_cap.isOpened():
-            print("Warning: Could not open depth camera. Continuing with RGB only.")
+        try:
+            depth_cap = BufferlessVideoCapture(DEPTH_CAMERA_ID)
+            time.sleep(1.0)  # Wait for depth camera to stabilize
+            
+            if not depth_cap.isOpened():
+                print("Warning: Could not open depth camera. Continuing with RGB only.")
+                depth_cap = None
+            else:
+                print("Depth camera ready!")
+        except Exception as e:
+            print(f"Warning: Depth camera failed ({e}). Continuing with RGB only.")
             depth_cap = None
-        else:
-            print("Depth camera initialized successfully!")
     else:
         print("Depth camera disabled (DEPTH_CAMERA_ID not set)")
 
