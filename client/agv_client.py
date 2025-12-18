@@ -4,11 +4,17 @@ import cv2
 import json
 import time
 import os
+import sys
+import platform
 import threading
 from dotenv import load_dotenv
 from motor_controller import MotorController
 
 load_dotenv()
+
+# Detect platform for camera backend selection
+IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX = platform.system() == "Linux"
 
 # Configuration
 BACKEND_URL = os.getenv("BACKEND_URL", "ws://localhost:8000/ws")
@@ -28,22 +34,39 @@ except ValueError:
         CAMERA_ID = _cam_id
 
 
+def get_platform_backend():
+    """Get the appropriate camera backend for the current OS."""
+    if IS_WINDOWS:
+        return cv2.CAP_DSHOW  # DirectShow for Windows
+    elif IS_LINUX:
+        return cv2.CAP_V4L2   # Video4Linux2 for Linux
+    else:
+        return cv2.CAP_ANY    # Default for other platforms
+
+
 class BufferlessVideoCapture:
     """
     A wrapper around cv2.VideoCapture that continuously reads frames in a
     background thread, ensuring only the latest frame is ever returned.
     This solves the stale buffer problem when processing is slow.
+    
+    For Orbbec Astra Pro 2:
+    - Windows: Uses DirectShow (CAP_DSHOW), RGB camera typically at index 2
+    - Linux: Uses V4L2 (CAP_V4L2), RGB camera typically at /dev/video4 or index 4
     """
     def __init__(self, name, backend=None):
-        # Use DirectShow backend on Windows for Orbbec Astra Pro 2 RGB camera
+        # Use platform-specific backend for Orbbec Astra Pro 2 RGB camera
         # This is required because the camera exposes multiple interfaces (RGB, IR, Depth)
         # and the default backend may pick the wrong one
         if backend is not None:
             self.cap = cv2.VideoCapture(name, backend)
         elif isinstance(name, int):
-            # For integer indices on Windows, use DirectShow to access the correct camera
-            self.cap = cv2.VideoCapture(name, cv2.CAP_DSHOW)
+            # For integer indices, use platform-specific backend
+            platform_backend = get_platform_backend()
+            print(f"Using camera index {name} with backend: {'DSHOW' if IS_WINDOWS else 'V4L2' if IS_LINUX else 'ANY'}")
+            self.cap = cv2.VideoCapture(name, platform_backend)
         else:
+            # For URLs or paths, use default backend
             self.cap = cv2.VideoCapture(name)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
