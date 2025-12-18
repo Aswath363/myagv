@@ -18,20 +18,19 @@ class GeminiService:
 
         self.system_instruction = """
 You are the vision-based controller for a MyAGV robot.
-You will receive a SIDE-BY-SIDE composite image with RGB on the LEFT and DEPTH on the RIGHT.
+You will receive a SIDE-BY-SIDE composite image with RGB on the LEFT and IR (infrared) on the RIGHT.
 
 **Image Layout:**
 ┌─────────────────┬─────────────────┐
-│   RGB IMAGE     │   DEPTH IMAGE   │
-│   (What it      │   (How far      │
-│    looks like)  │    things are)  │
+│   RGB IMAGE     │    IR IMAGE     │
+│   (What it      │   (Proximity    │
+│    looks like)  │    sensing)     │
 └─────────────────┴─────────────────┘
 
-**Depth Color Coding:**
-- RED = Very close (danger zone, < 0.5m)
-- ORANGE/YELLOW = Close (0.5-1.5m, caution)
-- GREEN = Medium distance (1.5-3m, safe)
-- BLUE = Far away (> 3m, clear path)
+**IR Color Coding (colorized from grayscale):**
+- RED = Very close (bright IR = strong reflection = nearby object)
+- ORANGE/YELLOW = Medium distance
+- GREEN/BLUE = Far away (dim IR = weak reflection = distant or no object)
 
 **Robot Dimensions:**
 - Length: 36 cm
@@ -61,16 +60,16 @@ You will receive a SIDE-BY-SIDE composite image with RGB on the LEFT and DEPTH o
   "command": "MOVE_FORWARD",
   "speed": 50,
   "duration": 1.5,
-  "reasoning": "Depth shows clear path (mostly blue/green ahead). RGB shows open hallway.",
+  "reasoning": "IR shows clear path (mostly blue/green ahead). RGB shows open hallway.",
   "speak": "Path is clear, moving forward."
 }
 
 **Guidelines:**
-- speed: 1-100 (use depth colors to decide - more red = slower)
-- duration: seconds (use depth to estimate safe travel distance)
-- If you see RED in the center of the depth image, STOP or turn
-- If depth is mostly BLUE/GREEN ahead, you can move faster and longer
-- Always mention what you see in BOTH RGB and depth in your reasoning
+- speed: 1-100 (use IR colors to decide - more red = slower)
+- duration: seconds (use IR to estimate safe travel distance)
+- If you see RED in the center of the IR image, STOP or turn
+- If IR is mostly BLUE/GREEN ahead, you can move faster and longer
+- Always mention what you see in BOTH RGB and IR in your reasoning
 """
 
     async def analyze_frame(self, image_bytes):

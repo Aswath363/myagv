@@ -34,8 +34,8 @@ def parse_camera_id(cam_id_str):
 # RGB Camera
 CAMERA_ID = parse_camera_id(os.getenv("CAMERA_ID", "0"))
 
-# Depth Camera (optional)
-DEPTH_CAMERA_ID = parse_camera_id(os.getenv("DEPTH_CAMERA_ID", "none"))
+# IR Camera (optional) - provides proximity info (brighter = closer)
+IR_CAMERA_ID = parse_camera_id(os.getenv("IR_CAMERA_ID", "none"))
 
 
 def get_platform_backend():
@@ -89,58 +89,58 @@ def capture_single_frame(camera_id):
     return None
 
 
-def colorize_depth(depth_frame):
+def colorize_ir(ir_frame):
     """
-    Convert depth frame to colorized visualization.
-    Red = close, Blue = far
+    Convert IR frame to colorized visualization.
+    In IR: brighter = closer (more IR reflection)
+    Output: Red = close, Blue = far
     """
-    if depth_frame is None:
+    if ir_frame is None:
         return None
     
     # Convert to grayscale if needed
-    if len(depth_frame.shape) == 3:
-        gray = cv2.cvtColor(depth_frame, cv2.COLOR_BGR2GRAY)
+    if len(ir_frame.shape) == 3:
+        gray = cv2.cvtColor(ir_frame, cv2.COLOR_BGR2GRAY)
     else:
-        gray = depth_frame
+        gray = ir_frame
     
     # Normalize to 0-255 range
     normalized = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
     normalized = np.uint8(normalized)
     
-    # Apply colormap (invert so close=red, far=blue)
-    inverted = 255 - normalized
-    colorized = cv2.applyColorMap(inverted, cv2.COLORMAP_JET)
+    # Apply colormap (brighter IR = closer = red)
+    colorized = cv2.applyColorMap(normalized, cv2.COLORMAP_JET)
     
     return colorized
 
 
-def create_side_by_side(rgb_frame, depth_frame):
+def create_side_by_side(rgb_frame, ir_frame):
     """
-    Create a side-by-side composite of RGB and colorized depth.
+    Create a side-by-side composite of RGB and colorized IR.
     """
     if rgb_frame is None:
         return None
         
-    if depth_frame is None:
+    if ir_frame is None:
         return rgb_frame
     
     h, w = rgb_frame.shape[:2]
     
-    # Colorize depth
-    depth_colored = colorize_depth(depth_frame)
-    if depth_colored is None:
+    # Colorize IR
+    ir_colored = colorize_ir(ir_frame)
+    if ir_colored is None:
         return rgb_frame
     
-    # Resize depth to match RGB
-    depth_resized = cv2.resize(depth_colored, (w, h))
+    # Resize IR to match RGB
+    ir_resized = cv2.resize(ir_colored, (w, h))
     
     # Create side-by-side
-    composite = np.hstack((rgb_frame, depth_resized))
+    composite = np.hstack((rgb_frame, ir_resized))
     
     # Add labels
     font = cv2.FONT_HERSHEY_SIMPLEX
     cv2.putText(composite, "RGB", (10, 30), font, 0.8, (255, 255, 255), 2)
-    cv2.putText(composite, "DEPTH (Red=Close, Blue=Far)", (w + 10, 30), font, 0.6, (255, 255, 255), 2)
+    cv2.putText(composite, "IR (Red=Close, Blue=Far)", (w + 10, 30), font, 0.6, (255, 255, 255), 2)
     
     return composite
 
@@ -149,7 +149,7 @@ async def run_agv_client():
     motor = MotorController()
     
     print(f"RGB Camera: {CAMERA_ID}")
-    print(f"Depth Camera: {DEPTH_CAMERA_ID}")
+    print(f"IR Camera: {IR_CAMERA_ID}")
     print(f"Connecting to {BACKEND_URL}...")
     
     async with websockets.connect(BACKEND_URL) as websocket:
@@ -168,25 +168,25 @@ async def run_agv_client():
                     continue
                 print("  -> RGB captured!")
                 
-                # Step 2: Capture Depth frame (if enabled)
-                depth_frame = None
-                if DEPTH_CAMERA_ID is not None:
-                    print("  -> Capturing Depth...")
+                # Step 2: Capture IR frame (if enabled)
+                ir_frame = None
+                if IR_CAMERA_ID is not None:
+                    print("  -> Capturing IR...")
                     time.sleep(0.2)  # Small delay between camera switches
-                    depth_frame = capture_single_frame(DEPTH_CAMERA_ID)
-                    if depth_frame is not None:
-                        print("  -> Depth captured!")
+                    ir_frame = capture_single_frame(IR_CAMERA_ID)
+                    if ir_frame is not None:
+                        print("  -> IR captured!")
                     else:
-                        print("  -> Depth capture failed, using RGB only")
+                        print("  -> IR capture failed, using RGB only")
                 
                 # Step 3: Create composite
-                composite = create_side_by_side(rgb_frame, depth_frame)
+                composite = create_side_by_side(rgb_frame, ir_frame)
                 
                 # Step 4: Encode and send
                 _, buffer = cv2.imencode('.jpg', composite, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
                 image_bytes = buffer.tobytes()
 
-                frame_type = "RGB+Depth" if depth_frame is not None else "RGB only"
+                frame_type = "RGB+IR" if ir_frame is not None else "RGB only"
                 print(f"[State]: Sending {len(image_bytes)/1024:.1f} KB {frame_type} image...")
                 await websocket.send(image_bytes)
 
