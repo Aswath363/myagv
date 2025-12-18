@@ -6,6 +6,7 @@ import json
 import time
 import os
 import platform
+import threading
 from dotenv import load_dotenv
 from motor_controller import MotorController
 
@@ -34,9 +35,6 @@ def parse_camera_id(cam_id_str):
 # RGB Camera
 CAMERA_ID = parse_camera_id(os.getenv("CAMERA_ID", "0"))
 
-# IR Camera (optional) - provides proximity info (brighter = closer)
-IR_CAMERA_ID = parse_camera_id(os.getenv("IR_CAMERA_ID", "none"))
-
 
 def get_platform_backend():
     """Get the appropriate camera backend for the current OS."""
@@ -48,114 +46,67 @@ def get_platform_backend():
         return cv2.CAP_ANY
 
 
-def capture_single_frame(camera_id):
+class BufferlessVideoCapture:
     """
-    Open a camera, capture ONE frame, then close it immediately.
-    This avoids having multiple cameras open simultaneously.
+    A wrapper around cv2.VideoCapture that continuously reads frames in a
+    background thread, ensuring only the latest frame is ever returned.
+    This provides stable RGB streaming.
     """
-    if camera_id is None:
-        return None
-    
-    backend = get_platform_backend()
-    
-    # Open camera
-    if isinstance(camera_id, int):
-        cap = cv2.VideoCapture(camera_id, backend)
-    elif isinstance(camera_id, str) and camera_id.startswith("/dev/video"):
-        cap = cv2.VideoCapture(camera_id, cv2.CAP_V4L2)
-    else:
-        cap = cv2.VideoCapture(camera_id)
-    
-    if not cap.isOpened():
-        print(f"Failed to open camera: {camera_id}")
-        return None
-    
-    # Set resolution
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    # Grab a few frames to let camera stabilize (auto-exposure, etc.)
-    for _ in range(5):
-        cap.read()
-    
-    # Capture the actual frame
-    ret, frame = cap.read()
-    
-    # IMMEDIATELY release the camera
-    cap.release()
-    
-    if ret and frame is not None:
-        return frame
-    return None
-
-
-def colorize_ir(ir_frame):
-    """
-    Convert IR/depth frame to colorized visualization.
-    The Orbbec sensor outputs DISTANCE values:
-    - Lower values = closer objects
-    - Higher values = farther objects
-    
-    We invert this so:
-    - RED = close (low distance values)
-    - BLUE = far (high distance values)
-    """
-    if ir_frame is None:
-        return None
-    
-    # Convert to grayscale if needed
-    if len(ir_frame.shape) == 3:
-        gray = cv2.cvtColor(ir_frame, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = ir_frame
-    
-    # Normalize to 0-255 range
-    normalized = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
-    normalized = np.uint8(normalized)
-    
-    # INVERT: so close (low values) becomes high (red in JET colormap)
-    inverted = 255 - normalized
-    colorized = cv2.applyColorMap(inverted, cv2.COLORMAP_JET)
-    
-    return colorized
-
-
-def create_side_by_side(rgb_frame, ir_frame):
-    """
-    Create a side-by-side composite of RGB and colorized IR.
-    """
-    if rgb_frame is None:
-        return None
+    def __init__(self, name, backend=None):
+        if backend is not None:
+            self.cap = cv2.VideoCapture(name, backend)
+        elif isinstance(name, int):
+            platform_backend = get_platform_backend()
+            print(f"Using camera index {name} with backend: {'DSHOW' if IS_WINDOWS else 'V4L2' if IS_LINUX else 'ANY'}")
+            self.cap = cv2.VideoCapture(name, platform_backend)
+        elif isinstance(name, str) and name.startswith("/dev/video"):
+            print(f"Using device path {name} with V4L2 backend")
+            self.cap = cv2.VideoCapture(name, cv2.CAP_V4L2)
+        else:
+            self.cap = cv2.VideoCapture(name)
         
-    if ir_frame is None:
-        return rgb_frame
-    
-    h, w = rgb_frame.shape[:2]
-    
-    # Colorize IR
-    ir_colored = colorize_ir(ir_frame)
-    if ir_colored is None:
-        return rgb_frame
-    
-    # Resize IR to match RGB
-    ir_resized = cv2.resize(ir_colored, (w, h))
-    
-    # Create side-by-side
-    composite = np.hstack((rgb_frame, ir_resized))
-    
-    # Add labels
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(composite, "RGB", (10, 30), font, 0.8, (255, 255, 255), 2)
-    cv2.putText(composite, "IR (Red=Close, Blue=Far)", (w + 10, 30), font, 0.6, (255, 255, 255), 2)
-    
-    return composite
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.lock = threading.Lock()
+        self.latest_frame = None
+        self.running = True
+        self.thread = threading.Thread(target=self._reader, daemon=True)
+        self.thread.start()
+
+    def _reader(self):
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret:
+                with self.lock:
+                    self.latest_frame = frame
+            time.sleep(0.01)
+
+    def read(self):
+        with self.lock:
+            if self.latest_frame is not None:
+                return True, self.latest_frame.copy()
+            return False, None
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def release(self):
+        self.running = False
+        self.thread.join(timeout=1.0)
+        self.cap.release()
 
 
 async def run_agv_client():
     motor = MotorController()
     
-    print(f"RGB Camera: {CAMERA_ID}")
-    print(f"IR Camera: {IR_CAMERA_ID}")
+    print(f"Initializing RGB Camera: {CAMERA_ID}")
+    cap = BufferlessVideoCapture(CAMERA_ID)
+    time.sleep(1.0) # Allow camera to warm up
+    
+    if not cap.isOpened():
+        print("Error: Could not open RGB camera.")
+        return
+
     print(f"Connecting to {BACKEND_URL}...")
     
     async with websockets.connect(BACKEND_URL) as websocket:
@@ -163,39 +114,20 @@ async def run_agv_client():
         
         try:
             while True:
-                print("\n[State]: Capturing frames sequentially...")
+                print("\n[State]: Getting frame...")
                 
-                # Step 1: Capture RGB frame
-                print("  -> Capturing RGB...")
-                rgb_frame = capture_single_frame(CAMERA_ID)
-                if rgb_frame is None:
-                    print("Failed to capture RGB frame")
-                    await asyncio.sleep(0.5)
+                # Get RGB frame
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    print("Failed to grab frame")
+                    await asyncio.sleep(0.1)
                     continue
-                print("  -> RGB captured!")
                 
-                # Step 2: Capture IR frame (if enabled)
-                ir_frame = None
-                if IR_CAMERA_ID is not None:
-                    print("  -> Capturing IR...")
-                    time.sleep(0.2)  # Small delay between camera switches
-                    ir_frame = capture_single_frame(IR_CAMERA_ID)
-                    if ir_frame is not None:
-                        # Debug info: check what values the camera is actually returning
-                        min_val, max_val, _, _ = cv2.minMaxLoc(cv2.cvtColor(ir_frame, cv2.COLOR_BGR2GRAY) if len(ir_frame.shape)==3 else ir_frame)
-                        print(f"  -> IR captured! Range: {min_val:.0f}-{max_val:.0f} (Low=Close?)")
-                    else:
-                        print("  -> IR capture failed, using RGB only")
-                
-                # Step 3: Create composite
-                composite = create_side_by_side(rgb_frame, ir_frame)
-                
-                # Step 4: Encode and send
-                _, buffer = cv2.imencode('.jpg', composite, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                # Encode to JPEG
+                _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
                 image_bytes = buffer.tobytes()
 
-                frame_type = "RGB+IR" if ir_frame is not None else "RGB only"
-                print(f"[State]: Sending {len(image_bytes)/1024:.1f} KB {frame_type} image...")
+                print(f"[State]: Sending {len(image_bytes)/1024:.1f} KB RGB image...")
                 await websocket.send(image_bytes)
 
                 # Receive command
@@ -211,6 +143,7 @@ async def run_agv_client():
             print("Client stopped by user")
         finally:
             motor.stop()
+            cap.release()
             cv2.destroyAllWindows()
 
 

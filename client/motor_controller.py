@@ -37,10 +37,18 @@ class MotorController:
             self.agv.go_ahead(speed)
         elif command == "MOVE_BACKWARD":
             self.agv.retreat(speed)
-        elif command == "TURN_LEFT":
+        elif command == "MOVE_LEFT":
+            # Strafe Left
             self.agv.pan_left(speed)
-        elif command == "TURN_RIGHT":
+        elif command == "MOVE_RIGHT":
+            # Strafe Right
             self.agv.pan_right(speed)
+        elif command == "TURN_LEFT":
+            # Rotate in place
+            self.agv.counterclockwise_rotation(speed)
+        elif command == "TURN_RIGHT":
+            # Rotate in place
+            self.agv.clockwise_rotation(speed)
         elif command == "STOP":
             self.agv.stop()
         else:
