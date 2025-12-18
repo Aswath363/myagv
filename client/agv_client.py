@@ -65,8 +65,12 @@ class BufferlessVideoCapture:
             platform_backend = get_platform_backend()
             print(f"Using camera index {name} with backend: {'DSHOW' if IS_WINDOWS else 'V4L2' if IS_LINUX else 'ANY'}")
             self.cap = cv2.VideoCapture(name, platform_backend)
+        elif isinstance(name, str) and name.startswith("/dev/video"):
+            # For Linux device paths like /dev/video4, use V4L2 backend
+            print(f"Using device path {name} with V4L2 backend")
+            self.cap = cv2.VideoCapture(name, cv2.CAP_V4L2)
         else:
-            # For URLs or paths, use default backend
+            # For URLs or other paths, use default backend
             self.cap = cv2.VideoCapture(name)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
