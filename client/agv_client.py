@@ -91,9 +91,14 @@ def capture_single_frame(camera_id):
 
 def colorize_ir(ir_frame):
     """
-    Convert IR frame to colorized visualization.
-    In IR: brighter = closer (more IR reflection)
-    Output: Red = close, Blue = far
+    Convert IR/depth frame to colorized visualization.
+    The Orbbec sensor outputs DISTANCE values:
+    - Lower values = closer objects
+    - Higher values = farther objects
+    
+    We invert this so:
+    - RED = close (low distance values)
+    - BLUE = far (high distance values)
     """
     if ir_frame is None:
         return None
@@ -108,8 +113,9 @@ def colorize_ir(ir_frame):
     normalized = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
     normalized = np.uint8(normalized)
     
-    # Apply colormap (brighter IR = closer = red)
-    colorized = cv2.applyColorMap(normalized, cv2.COLORMAP_JET)
+    # INVERT: so close (low values) becomes high (red in JET colormap)
+    inverted = 255 - normalized
+    colorized = cv2.applyColorMap(inverted, cv2.COLORMAP_JET)
     
     return colorized
 
@@ -175,7 +181,9 @@ async def run_agv_client():
                     time.sleep(0.2)  # Small delay between camera switches
                     ir_frame = capture_single_frame(IR_CAMERA_ID)
                     if ir_frame is not None:
-                        print("  -> IR captured!")
+                        # Debug info: check what values the camera is actually returning
+                        min_val, max_val, _, _ = cv2.minMaxLoc(cv2.cvtColor(ir_frame, cv2.COLOR_BGR2GRAY) if len(ir_frame.shape)==3 else ir_frame)
+                        print(f"  -> IR captured! Range: {min_val:.0f}-{max_val:.0f} (Low=Close?)")
                     else:
                         print("  -> IR capture failed, using RGB only")
                 
