@@ -18,7 +18,7 @@ try:
     CAMERA_ID = int(_cam_id)
 except ValueError:
     # It's a string, likely a file path or URL
-    if _cam_id.startswith("http") or _cam_id.startswith("rtsp"):
+    if _cam_id.startswith("http") or _cam_id.startswith("rtsp") or _cam_id.startswith("tcp"):
          CAMERA_ID = _cam_id
     elif any(char.isdigit() for char in _cam_id) and "." in _cam_id:
         # Heuristic: looks like an IP/URL but missing protocol
@@ -34,8 +34,17 @@ class BufferlessVideoCapture:
     background thread, ensuring only the latest frame is ever returned.
     This solves the stale buffer problem when processing is slow.
     """
-    def __init__(self, name):
-        self.cap = cv2.VideoCapture(name)
+    def __init__(self, name, backend=None):
+        # Use DirectShow backend on Windows for Orbbec Astra Pro 2 RGB camera
+        # This is required because the camera exposes multiple interfaces (RGB, IR, Depth)
+        # and the default backend may pick the wrong one
+        if backend is not None:
+            self.cap = cv2.VideoCapture(name, backend)
+        elif isinstance(name, int):
+            # For integer indices on Windows, use DirectShow to access the correct camera
+            self.cap = cv2.VideoCapture(name, cv2.CAP_DSHOW)
+        else:
+            self.cap = cv2.VideoCapture(name)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         self.lock = threading.Lock()

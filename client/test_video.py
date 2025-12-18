@@ -13,7 +13,7 @@ def test_video_stream():
         source_desc = f"device index {camera_source}"
     except ValueError:
         # Heuristics
-        if _cam_id.startswith("http") or _cam_id.startswith("rtsp"):
+        if _cam_id.startswith("http") or _cam_id.startswith("rtsp") or _cam_id.startswith("tcp"):
              camera_source = _cam_id
         elif any(char.isdigit() for char in _cam_id) and "." in _cam_id:
             camera_source = f"http://{_cam_id}"
