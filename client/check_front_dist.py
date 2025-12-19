@@ -8,70 +8,68 @@ from lidar_driver import LidarDriver
 IS_LINUX = platform.system() == "Linux"
 LIDAR_PORT = os.getenv("LIDAR_PORT", "/dev/ttyTHS1" if IS_LINUX else "COM3")
 
-def get_front_distance(scan, sector_angle=20):
-    """
-    Calculates the minimum distance in the front sector.
-    sector_angle: Total angle to check (e.g. 20 means -10 to +10 degrees)
-    Returns: Min distance in mm, or None if no valid points.
-    """
-    if not scan:
-        return None
-        
-    front_dists = []
+def get_sector_info(scan, center_angle, width=20):
+    """Returns (min_dist, angle_of_min_dist) for a sector"""
+    if not scan: return None, None
     
-    # YDLidar X4: 0 is Front, Clockwise.
-    # We want angles [0 to sector/2] AND [360 - sector/2 to 360]
-    half_sector = sector_angle / 2.0
+    half = width / 2.0
+    min_d = float('inf')
+    min_a = None
+    
+    start_a = (center_angle - half) % 360
+    end_a = (center_angle + half) % 360
     
     for angle, dist in scan.items():
-        if dist <= 10: continue # Ignore noise
+        if dist <= 10: continue
         
-        # Check if angle is in front sector
-        if angle <= half_sector or angle >= (360 - half_sector):
-             front_dists.append(dist)
+        # Check angle inclusion handling wrap-around
+        if start_a < end_a:
+            in_sector = start_a <= angle <= end_a
+        else:
+             in_sector = angle >= start_a or angle <= end_a
              
-    if not front_dists:
-        return None
-        
-    return min(front_dists)
+        if in_sector:
+            if dist < min_d:
+                min_d = dist
+                min_a = angle
+                
+    if min_d == float('inf'): return None, None
+    return min_d, min_a
 
 def main():
     print(f"Initializing LiDAR on {LIDAR_PORT}...")
     lidar = LidarDriver(LIDAR_PORT)
     lidar.start()
     
-    print("\n[Front Distance Monitor]")
-    print("Press Ctrl+C to stop...\n")
+    print("\n[Detailed Lidar Monitor]")
     
     try:
         while True:
             scan = lidar.get_latest_scan()
             
-            # Check 30 degree cone (+/- 15 deg)
-            dist_mm = get_front_distance(scan, sector_angle=30)
+            # Check 4 directions
+            f_dist, f_ang = get_sector_info(scan, 0, 30)
+            l_dist, l_ang = get_sector_info(scan, 270, 30) # 270 is Left in X4 (Clockwise)? No, 0=Front, 90=Right, 180=Back, 270=Left
+            r_dist, r_ang = get_sector_info(scan, 90, 30)
+            b_dist, b_ang = get_sector_info(scan, 180, 30)
             
-            # Clear line (ANSI escape) to update in place
-            print("\033[K", end="") 
+            print("\033[2J\033[H", end="") # Clear Screen
+            print("--- LiDAR Sector Analysis ---")
             
-            if dist_mm:
-                dist_cm = dist_mm / 10.0
-                
-                # Visual Bar
-                # [=====      ] 50cm
-                max_bar = 200 # 2m max for bar
-                bar_len = 20
-                filled = int(min(dist_cm, max_bar) / max_bar * bar_len)
-                bar = "#" * filled + "-" * (bar_len - filled)
-                
-                status = "SAFE"
-                if dist_cm < 20: status = "CRITICAL"
-                elif dist_cm < 50: status = "WARNING"
-                
-                print(f"\rFront Object: {dist_cm:.1f} cm  [{bar}]  {status}", end="", flush=True)
-            else:
-                print("\rFront Object: > 800 cm     [--------------------]  CLEAR", end="", flush=True)
-                
-            time.sleep(0.1)
+            def fmt(d, a): 
+                return f"{d/10.0:.1f}cm @ {a}°" if d else "CLEAR"
+            
+            print(f"FRONT (0°):   {fmt(f_dist, f_ang)}")
+            print(f"RIGHT (90°):  {fmt(r_dist, r_ang)}")
+            print(f"BACK (180°):  {fmt(b_dist, b_ang)}")
+            print(f"LEFT (270°):  {fmt(l_dist, l_ang)}")
+            print("-" * 30)
+            
+            if f_dist and f_dist < 250:
+                 print("\n!! POSSIBLE SELF-OCCLUSION OR OBSTACLE !!")
+                 print(f"Closest Front Point: {f_dist} mm at Angle {f_ang}")
+                 
+            time.sleep(0.2)
             
     except KeyboardInterrupt:
         print("\nStopping...")
