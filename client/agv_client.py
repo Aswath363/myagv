@@ -103,14 +103,37 @@ def process_lidar_data(scan):
     """
     Filter and clean LiDAR data.
     1. Remove invalid ranges (< 10cm or > 8m)
-    2. (Optional) Simple outlier removal could go here.
+    2. Filter self-occlusion dead zones (robot body reflection).
     """
+    # Dead Zones: Angle ranges where robot body is visible.
+    # These need to be calibrated per-robot.
+    # Format: list of (start_angle, end_angle) where start < end handles normal,
+    # for wrap-around (e.g. 350-10), use two entries or special logic.
+    # TODO: Calibrate these for MyAGV 2023 JN after running debug tool.
+    DEAD_ZONES = [
+        # Example: If angles 355-5 always show ~19cm, exclude that sector.
+        # (355, 360), (0, 5) 
+    ]
+    
+    # Minimum valid distance (mm). Points closer than this are likely noise or self-reflection.
+    MIN_VALID_DIST = 150  # 15cm
+    
     clean_scan = {}
     for angle, dist in scan.items():
-        # YDLidar X4 range: 0.12m - 10m
-        # We allow a bit closer (100mm) for close contact
-        if 100 < dist < 8000:
+        # Range check
+        if dist < MIN_VALID_DIST or dist > 8000:
+             continue
+             
+        # Dead Zone check
+        in_dead_zone = False
+        for start, end in DEAD_ZONES:
+            if start <= angle <= end:
+                in_dead_zone = True
+                break
+        
+        if not in_dead_zone:
              clean_scan[angle] = dist
+             
     return clean_scan
 
 def draw_lidar_view(scan, size=(480, 480), max_dist_mm=4000):
