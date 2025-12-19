@@ -3,4 +3,4 @@ opencv-python>=4.9.0.80
 numpy>=1.26.0
 pymycobot>=3.3.0
 python-dotenv>=1.0.1
-rplidar-robotic>=2.4.0
+rplidar

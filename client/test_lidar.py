@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import platform
+import serial.tools.list_ports
 from rplidar import RPLidar
 
 def get_lidar_port():
@@ -9,11 +10,26 @@ def get_lidar_port():
     Attempt to find the LiDAR port based on the operating system.
     Returns a default port string.
     """
+    # Debug: List all available ports
+    ports = list(serial.tools.list_ports.comports())
+    print("Available Serial Ports:")
+    detected_port = None
+    for p in ports:
+        print(f" - {p.device}: {p.description}")
+        # Try to guess common lidar ports
+        if "CP210" in p.description or "USB" in p.description:
+            if platform.system() == "Linux" and "ttyUSB" in p.device:
+                detected_port = p.device
+
     system = platform.system()
     if system == "Windows":
         return "COM3"  # Common default, user may need to change
     elif system == "Linux":
-        # On Jetson Nano/Raspberry Pi, it's often ttyUSB0 or ttyUSB1
+        if detected_port:
+            print(f"Auto-detected likely LiDAR port: {detected_port}")
+            return detected_port
+            
+        # Fallbacks
         if os.path.exists("/dev/ttyUSB0"):
             return "/dev/ttyUSB0"
         elif os.path.exists("/dev/ttyACM0"):
