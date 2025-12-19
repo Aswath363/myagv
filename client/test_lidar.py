@@ -47,40 +47,49 @@ def run_lidar_test():
     
     lidar = None
     try:
-        lidar = RPLidar(port)
+        # Add timeout to constructor
+        lidar = RPLidar(port, timeout=3)
         
-        info = lidar.get_info()
-        print("\nLiDAR Info:")
-        for k, v in info.items():
-            print(f"{k}: {v}")
-            
-        health = lidar.get_health()
-        print(f"\nLiDAR Health: {health}")
+        # Try to get info with a retry mechanism
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                info = lidar.get_info()
+                print("\nLiDAR Info:")
+                for k, v in info.items():
+                    print(f"{k}: {v}")
+                
+                health = lidar.get_health()
+                print(f"\nLiDAR Health: {health}")
+                break
+            except Exception as e:
+                print(f"Connection attempt {attempt+1} failed: {e}")
+                lidar.clean_input()
+                time.sleep(1)
         
         print("\nStarting scan (press Ctrl+C to stop)...")
         
-        # scan returns items as a generator: (new_scan, quality, angle, distance)
-        # new_scan: bool, True if this is the start of a new 360 scan
-        # quality: int, reflection quality
-        # angle: float, 0-360 degrees
-        # distance: float, distance in millimeters
-        
         count = 0
-        for i, scan in enumerate(lidar.iter_scans()):
-            print(f"\nScan {i}: got {len(scan)} points")
-            # Print first 5 points of the scan
-            for point in scan[:5]:
-                quality, angle, distance = point
-                print(f"  Angle: {angle:.1f}°, Dist: {distance:.1f}mm, Quality: {quality}")
-            
-            count += 1
-            if count >= 10:  # Stop after 10 scans for this test
-                break
+        # iter_scans may also fail if buffer is garbage, so wrap it
+        try:
+            for i, scan in enumerate(lidar.iter_scans()):
+                print(f"\nScan {i}: got {len(scan)} points")
+                for point in scan[:5]:
+                    quality, angle, distance = point
+                    print(f"  Angle: {angle:.1f}°, Dist: {distance:.1f}mm, Quality: {quality}")
+                
+                count += 1
+                if count >= 10:
+                    break
+        except Exception as scan_error:
+            print(f"Scan error: {scan_error}")
+            lidar.clean_input()
                 
     except Exception as e:
-        print(f"\nError: {e}")
+        print(f"\nCritical Error: {e}")
         print("Note: If you are on Linux/Jetson, make sure you have permissions:")
         print(f"sudo chmod 666 {port}")
+                
     except KeyboardInterrupt:
         print("\nStopping...")
         
