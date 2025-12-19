@@ -64,13 +64,23 @@ def run_lidar_test():
                 break
             except Exception as e:
                 print(f"Connection attempt {attempt+1} failed: {e}")
-                lidar.clean_input()
+                
+                # Robust buffer clearing
+                if hasattr(lidar, 'clean_input'):
+                    lidar.clean_input()
+                elif hasattr(lidar, 'clear_input'):
+                    lidar.clear_input()
+                elif hasattr(lidar, '_serial'):
+                    lidar._serial.reset_input_buffer()
+                else:
+                    print("Could not clear input buffer (method not found)")
+                    lidar.stop()
+                    
                 time.sleep(1)
         
         print("\nStarting scan (press Ctrl+C to stop)...")
         
         count = 0
-        # iter_scans may also fail if buffer is garbage, so wrap it
         try:
             for i, scan in enumerate(lidar.iter_scans()):
                 print(f"\nScan {i}: got {len(scan)} points")
@@ -83,7 +93,14 @@ def run_lidar_test():
                     break
         except Exception as scan_error:
             print(f"Scan error: {scan_error}")
-            lidar.clean_input()
+            try:
+                lidar.stop()
+                if hasattr(lidar, 'clean_input'):
+                    lidar.clean_input()
+                elif hasattr(lidar, 'clear_input'):
+                    lidar.clear_input()
+            except:
+                pass
                 
     except Exception as e:
         print(f"\nCritical Error: {e}")
