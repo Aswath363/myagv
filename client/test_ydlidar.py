@@ -36,16 +36,26 @@ def run_test():
             
             # StartScanning returns a generator yielding dicts
             for data in lidar.StartScanning():
-                if count % 20 == 0:
-                     print(f"Scan {count}: {len(data)} points")
-                     # data is a dict: {angle: distance, ...}
-                     # Print first few items
-                     first_angles = list(data.keys())[:5]
-                     for ang in first_angles:
-                         print(f"  Angle: {ang}, Dist: {data[ang]}")
+                if count % 10 == 0:
+                     # Filter out zero/invalid distances
+                     valid_points = {k: v for k, v in data.items() if v > 0}
+                     
+                     print(f"Scan {count}: {len(data)} total points, {len(valid_points)} valid points")
+                     
+                     if valid_points:
+                         min_dist = min(valid_points.values())
+                         max_dist = max(valid_points.values())
+                         print(f"  Range: {min_dist:.1f}mm - {max_dist:.1f}mm")
+                         
+                         # Print 3 random samples from valid points
+                         sample_angles = list(valid_points.keys())[:3]
+                         for ang in sample_angles:
+                             print(f"  Angle: {ang}°, Dist: {valid_points[ang]}mm")
+                     else:
+                         print("  No valid points detected yet (spinning up?)")
                 
                 count += 1
-                if time.time() > t_end or count > 50:
+                if count > 100: # Run for about 100 scans to be sure
                     break
                     
             print("Stopping...")
