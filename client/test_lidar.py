@@ -32,6 +32,9 @@ def get_lidar_port():
         # Fallbacks
         if os.path.exists("/dev/ttyUSB0"):
             return "/dev/ttyUSB0"
+        elif os.path.exists("/dev/ttyTHS1"):
+            print("Found /dev/ttyTHS1 (Jetson Nano UART) - using this.")
+            return "/dev/ttyTHS1"
         elif os.path.exists("/dev/ttyACM0"):
             return "/dev/ttyACM0"
         return "/dev/ttyUSB0"
