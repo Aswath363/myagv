@@ -245,6 +245,21 @@ async def run_agv_client():
                 dim = (width, height)
                 resized_img = cv2.resize(combined_img, dim, interpolation=cv2.INTER_AREA)
                 
+                # --- VISUAL DEBUG WINDOW ---
+                if IS_LINUX:
+                     # On Jetson (headless or remote), this might fail if no X11.
+                     # But user asked for a window, assuming they have a display connected.
+                     try:
+                        cv2.imshow("MyAGV AI View (Left: RGB, Right: LiDAR)", resized_img)
+                        cv2.waitKey(1)
+                     except Exception:
+                        pass
+                else: 
+                     # Windows/Desktop testing
+                     cv2.imshow("MyAGV AI View (Left: RGB, Right: LiDAR)", resized_img)
+                     cv2.waitKey(1)
+                # ---------------------------
+
                 # Encode to JPEG
                 _, buffer = cv2.imencode('.jpg', resized_img, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
                 image_bytes = buffer.tobytes()
