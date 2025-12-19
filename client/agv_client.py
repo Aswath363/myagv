@@ -99,6 +99,20 @@ class BufferlessVideoCapture:
         self.cap.release()
 
 
+def process_lidar_data(scan):
+    """
+    Filter and clean LiDAR data.
+    1. Remove invalid ranges (< 10cm or > 8m)
+    2. (Optional) Simple outlier removal could go here.
+    """
+    clean_scan = {}
+    for angle, dist in scan.items():
+        # YDLidar X4 range: 0.12m - 10m
+        # We allow a bit closer (100mm) for close contact
+        if 100 < dist < 8000:
+             clean_scan[angle] = dist
+    return clean_scan
+
 def draw_lidar_view(scan, size=(480, 480), max_dist_mm=4000):
     """
     Draws a 2D radar view of the lidar scan.
@@ -108,19 +122,19 @@ def draw_lidar_view(scan, size=(480, 480), max_dist_mm=4000):
     img = np.zeros((size[1], size[0], 3), dtype=np.uint8)
     cx, cy = size[0] // 2, size[1] // 2
     
-    # Draw reference rings (1m, 2m, 3m)
+    # Draw reference rings (0.5m, 1m, 2m)
     scale = min(cx, cy) / max_dist_mm # px per mm
     
+    cv2.circle(img, (cx, cy), int(500 * scale), (30, 30, 30), 1)  # 0.5m (Safety Zone)
     cv2.circle(img, (cx, cy), int(1000 * scale), (50, 50, 50), 1) # 1m
     cv2.circle(img, (cx, cy), int(2000 * scale), (50, 50, 50), 1) # 2m
-    cv2.circle(img, (cx, cy), int(3000 * scale), (50, 50, 50), 1) # 3m
     
     # Draw axes
     cv2.line(img, (cx, 0), (cx, size[1]), (30, 30, 30), 1)
     cv2.line(img, (0, cy), (size[0], cy), (30, 30, 30), 1)
     
-    # Draw Robot (Triangle)
-    pts = np.array([[cx, cy-10], [cx-7, cy+7], [cx+7, cy+7]], np.int32)
+    # Draw Robot (Triangle pointing UP)
+    pts = np.array([[cx, cy-15], [cx-10, cy+10], [cx+10, cy+10]], np.int32)
     cv2.fillPoly(img, [pts], (0, 0, 255))
     
     # Draw Points
@@ -129,36 +143,30 @@ def draw_lidar_view(scan, size=(480, 480), max_dist_mm=4000):
         return img
         
     for angle, dist in scan.items():
-        if dist <= 0 or dist > max_dist_mm: continue
+        # YDLidar X4 Coordinate System:
+        # 0 deg = Front (Cable/Motor side)
+        # Direction: Clockwise
         
-        # Convert polar to cartesian
-        # Lidar angle 0 is usually front or back, need to verify orientation for specific unit
-        # Standard X4/RPLidar often 0 is front, clockwise positive
-        # Mathematical: x = d * cos(a), y = d * sin(a)
-        # Screen: y is inverted (top is 0) -> y = cy - d*sin(a)
-        # Correct 0-up angle: theta = angle - 90?
-        # Let's assume 0 is Front for now.
+        # Math for Screen (0,0 is Top Left):
+        # We want 0 deg -> UP (Negative Y)
+        # We want 90 deg -> RIGHT (Positive X)
+        
+        # Formula:
+        # x = cx + dist * sin(rad)
+        # y = cy - dist * cos(rad)
         
         rad = math.radians(angle)
-        # If 0 is front (North), then x = sin, y = cos.
-        # But commonly 0 is East. 
-        # For YDLidar X4, usually 0 is aligned with the cable notch.
-        # Assuming standard polar coordinate processing:
-        # x = dist * cos(rad)
-        # y = dist * sin(rad)
         
-        # Map to screen pixels (cx, cy is origin)
-        # We rotate -90 so 0 is up
-        px = cx + int(dist * scale * math.cos(rad))
-        py = cy - int(dist * scale * math.sin(rad)) # Minus because Y is down
+        px = cx + int(dist * scale * math.sin(rad))
+        py = cy - int(dist * scale * math.cos(rad))
         
-        # Color based on distance (Red=Close, Green=Far)
-        if dist < 500:
-            color = (0, 0, 255)
-        elif dist < 1500:
-            color = (0, 255, 255)
+        # Color based on distance (Red=Close, Yellow=Medium, Green=Far)
+        if dist < 200: # Very Close (<20cm)
+            color = (0, 0, 255) # Red
+        elif dist < 600: # Close (<60cm)
+            color = (0, 255, 255) # Yellow
         else:
-            color = (0, 255, 0)
+            color = (0, 255, 0) # Green
             
         cv2.circle(img, (px, py), 2, color, -1)
         
@@ -224,6 +232,7 @@ async def run_agv_client():
                 
                 # Get LiDAR Scan
                 scan = lidar.get_latest_scan()
+                scan = process_lidar_data(scan)
                 
                 # Safety Check
                 is_safe = check_safety(scan)
