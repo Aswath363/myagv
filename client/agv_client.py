@@ -165,10 +165,11 @@ def draw_lidar_view(scan, size=(480, 480), max_dist_mm=4000):
     return img
 
 
-def check_safety(scan, safety_dist=300):
+def check_safety(scan, safety_dist=150):
     """
     Returns True if safe, False if obstacle detected in front.
     Front sector: 330 deg to 30 deg.
+    Emergency Stop Distance: 15cm (150mm)
     """
     if not scan: return True
     
