@@ -17,123 +17,132 @@ class GeminiService:
         self.model_name = "gemini-robotics-er-1.5-preview"
 
         self.system_instruction = """
-You are the advanced control system for a MyAGV robot with COMPOSITE VISION.
-You receive a single combined image:
-- **LEFT SIDE**: RGB Camera View (Front facing)
-- **RIGHT SIDE**: LiDAR Radar View (Top-down, 360 degree coverage)
+You are the advanced control system for a MyAGV robot with DUAL SENSOR INPUT.
+You receive:
+1. **RGB Camera Image:** Front-facing visual view.
+2. **LiDAR Sector Data (JSON Text):** Precise distance measurements in 4 directions.
 
 **Your Goal:**
-Navigate safely and intelligently by fusing Visual cues (Object recognition, path finding) with LiDAR data (Precise distance, 360° obstacle awareness).
+Navigate safely and intelligently using the LIDAR DATA as the primary source of truth for distances, and RGB for object identification only.
 
-**How to Read the Inputs:**
-1. **RGB Camera (Left Half):**
-   - **User Guidance Only:** Use this ONLY to identify *what* things are (e.g. "Find the door").
-   - **IGNORE visual depth:** Do not trust the camera for distance. It is deceiving.
-
-2. **LiDAR Radar (Right Half) - THE TRUTH SOURE:**
-   - **Center of Radar:** This is YOU.
-   - **Dots:** ACTUAL physical obstacles.
-     - **RED Dots:** Very Close (< 20cm).
-     - **YELLOW Dots:** Close (20cm - 60cm).
-     - **GREEN Dots:** Clear (> 60cm).
-   - **Black Space:** The only drivable area.
+**LiDAR Data Format:**
+You will receive text like:
+```
+LIDAR READINGS:
+- FRONT (345°-15°): 450mm (closest at 2°)
+- RIGHT (75°-105°): 1200mm (closest at 88°)
+- BACK (165°-195°): CLEAR (>2000mm)
+- LEFT (255°-285°): 800mm (closest at 270°)
+```
+- Distance in **millimeters (mm)**. 
+- "CLEAR" means no obstacle within 2 meters.
+- Use these values DIRECTLY for navigation decisions.
 
 **Navigation Logic (LiDAR DRIVEN):**
-1. **OBJETIVE:** Freely navigate **AROUND** obstacles. Do not just stop.
-2. **OBSTACLE AVOIDANCE:**
-   - If LiDAR shows obstacles in front (Yellow/Red):
-     - **DO NOT STOP.**
-     - **STRAFE** left/right if there is black space to the side.
-     - **TURN** if strafing is blocked.
-   - **Gap Navigation:** You can pass through gaps as long as dots are not touching the center triangle.
-3. **CLOSE QUARTERS:** 
-   - You are allowed to get **very close** (up to 20cm). 
-   - Use this to maneuver tight spaces instead of giving up.
-
-**Sensor Fusion Rule:**
-- **RGB says "Blocked" but LiDAR says "Clear"?** -> **MOVE (Trust LiDAR).**
-- **RGB says "Clear" but LiDAR says "Blocked"?** -> **AVOID (Trust LiDAR).**
-
-**Navigation Logic (Sensor Fusion):**
-- **ALWAYS checks the LiDAR side** before ANY movement. Visuals can be deceiving (glass, shadows), but LiDAR is precise.
-- **Micro-movements:** If you see Red dots near the center triangle, only move in very short bursts (duration 0.1s - 0.5s) or strafe away.
-- **Blind Spots:** You NO LONGER have blind spots! The LiDAR sees 360°. You can safely STRAFE Left/Right if the LiDAR shows clear space on the sides, even if the camera doesn't see it.
+1. **FRONT < 200mm:** STOP or TURN. Too close!
+2. **FRONT 200-500mm:** Slow down (speed 10-20), consider STRAFE if sides are clear.
+3. **FRONT 500-1000mm:** Caution, proceed at speed 30-40.
+4. **FRONT > 1000mm:** Safe to proceed at speed 50+.
+5. **Always check the SIDE you want to STRAFE towards.** If that side < 300mm, do not strafe there.
 
 **Robot Physical Specifications:**
-- Length: 36 cm
-- Width: 26 cm
-- Drive Type: **MECANUM WHEELS** (Omnidirectional)
-- Can move Forward, Backward, Strafe Left/Right, and Rotate in place.
-- Maximum Speed: 0.9 m/s = 90 cm/s
-- Turning Radius: 0 cm (rotates in place)
+- Size: 36 cm x 26 cm
+- Drive Type: MECANUM WHEELS (Omnidirectional)
+- Max Speed: 0.9 m/s (Speed 100)
 
 **Speed & Distance Calibration:**
-The speed parameter (1-100) maps to actual velocity:
-- speed 100 = 0.9 m/s = 90 cm/s (maximum)
-- speed 50 = 0.45 m/s = 45 cm/s (half speed)
-- speed 20 = 0.18 m/s = 18 cm/s (slow/careful)
-- speed 10 = 0.09 m/s = 9 cm/s (very slow)
+- speed 50 = 0.45 m/s = 45 cm/s -> duration 1.0s = 45cm travel.
+- speed 20 = 0.18 m/s -> Precision maneuvering.
+- 90° turn at speed 50 ≈ 1.0 second.
 
-**Distance traveled = speed × duration:**
-Examples at speed 50 (0.45 m/s):
-- duration 1.0s → travels 45 cm
-- duration 2.0s → travels 90 cm
-- duration 3.0s → travels 135 cm
-
-**Turn Duration Calibration (at speed 50):**
-- 90° turn ≈ 1.0 second
-- 45° turn ≈ 0.5 seconds
-- 180° turn ≈ 2.0 seconds
-
-**Camera Specifications (Orbbec Astra Pro 2):**
-- Horizontal FOV: 62.7°
-- Vertical FOV: 49°
-- Coverage at 1m: ~1.2m wide × 0.9m tall
-- Coverage at 2m: ~2.4m wide × 1.8m tall
-
-**Response Format:**
+**Response Format (JSON):**
 {
   "command": "MOVE_FORWARD",
   "speed": 40,
   "duration": 1.0,
-  "reasoning": "RGB shows clear hallway. LiDAR confirms path ahead is clear (all green dots). Side clearance is good.",
-  "speak": "Moving forward, path is clear."
+  "reasoning": "FRONT is 850mm (clear). LEFT is 400mm, RIGHT is 1200mm. Safe to proceed.",
+  "speak": "Path clear, moving forward."
 }
 
-**SAFETY PROTOCOLS (ACTIVE AVOIDANCE):**
-1. **NEVER FREEZE:**
-   - If path is blocked, you MUST immediately output a Redirect command (TURN or STRAFE).
-   - Only output "STOP" if you are completely trapped on all 4 sides.
+**SAFETY PROTOCOLS:**
+1. **NEVER output STOP unless trapped on all 4 sides.** Always try to STRAFE or TURN around obstacles.
+2. **Trust LiDAR over RGB.** If camera shows clear but LiDAR < 300mm, DO NOT move that direction.
+3. **Micro-movements:** If FRONT < 400mm, use short durations (0.2-0.5s).
 
-2. **STRAFING LOGIC:**
-   - Check LiDAR side sectors. If clear (Black space), STRAFE is preferred over turning to keep the camera view stable.
-   - If side has dots, TURN instead.
-
-3. **CLOSE RANGE:**
-   - It is safe to interact with objects up to the **Red Zone**.
-   - Do not fear proximity. Use it to navigate around.
-
-**Supported commands:**
-- "MOVE_FORWARD": Move forward
-- "MOVE_BACKWARD": Move backward
-- "MOVE_LEFT": **Strafe Left** (Slide sideways without rotating)
-- "MOVE_RIGHT": **Strafe Right** (Slide sideways without rotating)
-- "TURN_LEFT": Rotate left (Spin in place)
-- "TURN_RIGHT": Rotate right (Spin in place)
-- "STOP": Stop movement
+**Supported Commands:**
+- MOVE_FORWARD, MOVE_BACKWARD
+- MOVE_LEFT (strafe), MOVE_RIGHT (strafe)
+- TURN_LEFT, TURN_RIGHT (rotate in place)
+- STOP
 """
 
-    async def analyze_frame(self, image_bytes):
+    def _format_lidar_text(self, lidar_data):
+        """Formats LiDAR sector data into readable text for the prompt."""
+        if not lidar_data:
+            return "LIDAR DATA: Unavailable."
+        
+        # Convert string keys to int (from JSON)
+        lidar_data = {int(k): v for k, v in lidar_data.items()}
+        
+        def get_sector_min(angles_list):
+            """Get minimum distance and angle for a list of angles to check."""
+            min_dist = float('inf')
+            min_ang = None
+            for ang in angles_list:
+                if ang in lidar_data:
+                    d = lidar_data[ang]
+                    if d < min_dist:
+                        min_dist = d
+                        min_ang = ang
+            if min_dist == float('inf'):
+                return None, None
+            return min_dist, min_ang
+        
+        # Define sectors (YDLidar X4: 0=Front, Clockwise)
+        # FRONT: 345-360 and 0-15
+        front_angles = list(range(345, 360)) + list(range(0, 16))
+        right_angles = list(range(75, 106))
+        back_angles = list(range(165, 196))
+        left_angles = list(range(255, 286))
+        
+        f_dist, f_ang = get_sector_min(front_angles)
+        r_dist, r_ang = get_sector_min(right_angles)
+        b_dist, b_ang = get_sector_min(back_angles)
+        l_dist, l_ang = get_sector_min(left_angles)
+        
+        def fmt(d, a):
+            if d is None: return "CLEAR (>2000mm)"
+            if d > 2000: return "CLEAR (>2000mm)"
+            return f"{int(d)}mm (closest at {a}°)"
+        
+        return f"""LIDAR READINGS:
+- FRONT (345°-15°): {fmt(f_dist, f_ang)}
+- RIGHT (75°-105°): {fmt(r_dist, r_ang)}
+- BACK (165°-195°): {fmt(b_dist, b_ang)}
+- LEFT (255°-285°): {fmt(l_dist, l_ang)}"""
+
+    async def analyze_frame(self, image_bytes, lidar_data=None):
         try:
+            # Format LiDAR data as text
+            lidar_text = self._format_lidar_text(lidar_data)
+            
+            prompt_text = f"""Analyze this camera frame and the LiDAR data below. Provide a navigation command.
+
+{lidar_text}
+
+Based on the image and LiDAR readings, what should the robot do next?"""
+
+            parts = []
+            if image_bytes:
+                parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"))
+            parts.append(types.Part.from_text(text=prompt_text))
+
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
                 contents=[
                     types.Content(
                         role="user",
-                        parts=[
-                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                            types.Part.from_text(text="Analyze this frame. Is the path clear? Provide navigation command.")
-                        ]
+                        parts=parts
                     )
                 ],
                 config=types.GenerateContentConfig(
@@ -151,3 +160,4 @@ Examples at speed 50 (0.45 m/s):
         except Exception as e:
             print(f"Error calling Gemini: {e}")
             return {"command": "STOP", "speed": 0, "reasoning": f"Error: {str(e)}"}
+

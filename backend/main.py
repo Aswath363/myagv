@@ -28,18 +28,22 @@ async def websocket_endpoint(websocket: WebSocket):
     print("Client connected")
     try:
         while True:
-            # Receive binary frame
-            data = await websocket.receive_bytes()
+            # Receive JSON message containing image and lidar data
+            message = await websocket.receive_text()
+            payload = json.loads(message)
+            
+            # Extract components
+            import base64
+            image_b64 = payload.get("image", "")
+            lidar_data = payload.get("lidar", {})
+            
+            image_bytes = base64.b64decode(image_b64) if image_b64 else None
             
             # Record start time for latency check
             start_time = time.time()
             
-            # Process with Gemini
-            # We assume the client sends a new frame only after receiving a command,
-            # or we might want to skip frames if processing is slow.
-            # For this MVP, we process every frame received.
-            
-            command_data = await gemini_service.analyze_frame(data)
+            # Process with Gemini (pass both image and lidar)
+            command_data = await gemini_service.analyze_frame(image_bytes, lidar_data)
             
             # Calculate processing time
             process_time = time.time() - start_time

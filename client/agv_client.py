@@ -260,45 +260,30 @@ async def run_agv_client():
                 # Safety Check
                 is_safe = check_safety(scan)
                 
-                # Create Visualization
-                lidar_img = draw_lidar_view(scan, size=(480, 480))
-                
-                # Resize RGB to matches height (480) -> Keep aspect ratio 4:3 -> 640x480
-                # Frame is already 640x480
-                
-                # Combine Side-by-Side
-                # Final Size: 1120x480
-                combined_img = np.hstack((frame, lidar_img))
-                
-                # Resize to reduce bandwidth? 
-                # 1120 is wide. Let's resize output to width=1000
-                scale_percent = 0.8
-                width = int(combined_img.shape[1] * scale_percent)
-                height = int(combined_img.shape[0] * scale_percent)
-                dim = (width, height)
-                resized_img = cv2.resize(combined_img, dim, interpolation=cv2.INTER_AREA)
-                
-                # --- VISUAL DEBUG WINDOW ---
-                if IS_LINUX:
-                     # On Jetson (headless or remote), this might fail if no X11.
-                     # But user asked for a window, assuming they have a display connected.
-                     try:
-                        cv2.imshow("MyAGV AI View (Left: RGB, Right: LiDAR)", resized_img)
-                        cv2.waitKey(1)
-                     except Exception:
-                        pass
-                else: 
-                     # Windows/Desktop testing
-                     cv2.imshow("MyAGV AI View (Left: RGB, Right: LiDAR)", resized_img)
-                     cv2.waitKey(1)
+                # --- VISUAL DEBUG WINDOW (RGB only now) ---
+                try:
+                    cv2.imshow("MyAGV Camera View", frame)
+                    cv2.waitKey(1)
+                except Exception:
+                    pass
                 # ---------------------------
 
-                # Encode to JPEG
-                _, buffer = cv2.imencode('.jpg', resized_img, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
-                image_bytes = buffer.tobytes()
-
-                print(f"[State]: Sending {len(image_bytes)/1024:.1f} KB Combined image...")
-                await websocket.send(image_bytes)
+                # Encode RGB image to JPEG then base64
+                _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
+                import base64
+                image_b64 = base64.b64encode(buffer.tobytes()).decode('utf-8')
+                
+                # Convert scan dict keys to strings for JSON
+                lidar_json = {str(k): v for k, v in scan.items()}
+                
+                # Create payload
+                payload = {
+                    "image": image_b64,
+                    "lidar": lidar_json
+                }
+                
+                print(f"[State]: Sending RGB ({len(image_b64)//1024} KB) + LiDAR ({len(lidar_json)} pts)...")
+                await websocket.send(json.dumps(payload))
 
                 # Receive command
                 try:
