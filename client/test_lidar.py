@@ -45,62 +45,92 @@ def run_lidar_test():
     port = os.getenv("LIDAR_PORT", get_lidar_port())
     print(f"Attempting to connect to LiDAR on port: {port}")
     
+    baudrates = [115200, 256000, 128000]
     lidar = None
-    try:
-        # Add timeout to constructor
-        lidar = RPLidar(port, timeout=3)
-        
-        # Try to get info with a retry mechanism
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                info = lidar.get_info()
-                print("\nLiDAR Info:")
-                for k, v in info.items():
-                    print(f"{k}: {v}")
-                
-                health = lidar.get_health()
-                print(f"\nLiDAR Health: {health}")
-                break
-            except Exception as e:
-                print(f"Connection attempt {attempt+1} failed: {e}")
-                
-                # Robust buffer clearing
-                if hasattr(lidar, 'clean_input'):
-                    lidar.clean_input()
-                elif hasattr(lidar, 'clear_input'):
-                    lidar.clear_input()
-                elif hasattr(lidar, '_serial'):
-                    lidar._serial.reset_input_buffer()
-                else:
-                    print("Could not clear input buffer (method not found)")
-                    lidar.stop()
-                    
-                time.sleep(1)
-        
-        print("\nStarting scan (press Ctrl+C to stop)...")
-        
-        count = 0
+    connected = False
+    
+    for baud in baudrates:
+        print(f"\nTrying baudrate: {baud}...")
         try:
-            for i, scan in enumerate(lidar.iter_scans()):
-                print(f"\nScan {i}: got {len(scan)} points")
-                for point in scan[:5]:
-                    quality, angle, distance = point
-                    print(f"  Angle: {angle:.1f}°, Dist: {distance:.1f}mm, Quality: {quality}")
-                
-                count += 1
-                if count >= 10:
+            # Add timeout to constructor
+            lidar = RPLidar(port, baudrate=baud, timeout=3)
+            
+            # Try to get info with a retry mechanism
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    info = lidar.get_info()
+                    print("\nLiDAR Info:")
+                    for k, v in info.items():
+                        print(f"{k}: {v}")
+                    
+                    health = lidar.get_health()
+                    print(f"\nLiDAR Health: {health}")
+                    connected = True
                     break
-        except Exception as scan_error:
-            print(f"Scan error: {scan_error}")
-            try:
-                lidar.stop()
-                if hasattr(lidar, 'clean_input'):
-                    lidar.clean_input()
-                elif hasattr(lidar, 'clear_input'):
-                    lidar.clear_input()
-            except:
-                pass
+                except Exception as e:
+                    print(f"Connection attempt {attempt+1} failed: {e}")
+                    
+                    # Robust buffer clearing
+                    if hasattr(lidar, 'clean_input'):
+                        lidar.clean_input()
+                    elif hasattr(lidar, 'clear_input'):
+                        lidar.clear_input()
+                    elif hasattr(lidar, '_serial'):
+                        lidar._serial.reset_input_buffer()
+                    else:
+                        print("Could not clear input buffer (method not found)")
+                        try:
+                            lidar.stop()
+                        except:
+                            pass
+                        
+                    time.sleep(1)
+            
+            if connected:
+                print(f"Successfully connected at {baud} baud!")
+                break
+            else:
+                print(f"Failed to connect at {baud} baud.")
+                lidar.disconnect()
+                lidar = None
+                
+        except Exception as e:
+             print(f"Failed to init at {baud} baud: {e}")
+             if lidar:
+                 try:
+                     lidar.disconnect()
+                 except: 
+                     pass
+                 lidar = None
+    
+    if not connected or not lidar:
+        print("\nCould not connect to LiDAR at any baudrate.")
+        return
+
+    print("\nStarting scan (press Ctrl+C to stop)...")
+    
+    count = 0
+    try:
+        for i, scan in enumerate(lidar.iter_scans()):
+            print(f"\nScan {i}: got {len(scan)} points")
+            for point in scan[:5]:
+                quality, angle, distance = point
+                print(f"  Angle: {angle:.1f}°, Dist: {distance:.1f}mm, Quality: {quality}")
+            
+            count += 1
+            if count >= 10:
+                break
+    except Exception as scan_error:
+        print(f"Scan error: {scan_error}")
+        try:
+            lidar.stop()
+            if hasattr(lidar, 'clean_input'):
+                lidar.clean_input()
+            elif hasattr(lidar, 'clear_input'):
+                lidar.clear_input()
+        except:
+            pass
                 
     except Exception as e:
         print(f"\nCritical Error: {e}")
