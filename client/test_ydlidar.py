@@ -24,7 +24,7 @@ def run_test():
         # PyLidar3(port) uses default baudrate. 
         # Check documentation: usually 115200 or 128000 for X4/G4
         # We observed 115200 gave readable headers in debug dump.
-        lidar = PyLidar3.YDLidarX4(port) 
+        lidar = PyLidar3.YdLidarX4(port) 
         
         if(lidar.Connect()):
             print(f"Connected to LiDAR on {port}")
